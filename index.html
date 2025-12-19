@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แผนที่แหล่งน้ำ</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+    <!-- เพิ่ม proj4 library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #map { 
+            height: 100vh; 
+            width: 100%;
+        }
+        
+        /* ปรับแต่ง Layer Control */
+        .leaflet-control-layers {
+            font-size: 14px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        /* ปุ่มสลับ (collapsed state) - แสดงเป็น emoji grayscale */
+        .leaflet-control-layers-toggle {
+            background-image: none !important;
+            width: 50px !important;
+            height: 50px !important;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            filter: grayscale(100%);
+            transition: filter 0.3s ease;
+        }
+        
+        .leaflet-control-layers-toggle::before {
+            content: '🗺️';
+        }
+        
+        /* เมื่อ hover ให้กลับมาเป็นสีปกติ */
+        .leaflet-control-layers-toggle:hover {
+            filter: grayscale(0%);
+        }
+        
+        /* เมื่อขยาย (expanded state) */
+        .leaflet-control-layers-expanded .leaflet-control-layers-toggle {
+            display: none;
+        }
+        
+        .leaflet-control-layers-expanded {
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script>
+        // สร้างแผนที่
+        var map = L.map('map').setView([16.240027, 99.450809], 10);
+
+        // สร้าง Base Maps หลายแบบ
+        var osmStandard = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        });
+
+        var topoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            maxZoom: 17,
+            attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a>'
+        });
+
+        var satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        });
+
+        // เพิ่ม Base Map แรกเป็นค่าเริ่มต้น
+        osmStandard.addTo(map);
+
+        // สร้าง object สำหรับ Layer Control
+        var baseMaps = {
+            "แผนที่มาตรฐาน (Standard)": osmStandard,
+            "แผนที่ภูมิประเทศ (Topography)": topoMap,
+            "ภาพดาวเทียม (Satellite)": satellite
+        };
+
+        var overlayMaps = {
+            // จะเพิ่ม GeoJSON layer เข้ามาทีหลัง
+        };
+
+        // เพิ่ม Layer Control ลงในแผนที่
+        var layerControl = L.control.layers(baseMaps, overlayMaps, {
+            position: 'topright',
+            collapsed: true  // เปลี่ยนเป็น true เพื่อให้ซ่อนตอนเริ่มต้น
+        }).addTo(map);
+
+        // กำหนดระบบพิกัด
+        var from = "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs";
+        var to   = "+proj=longlat +datum=WGS84 +no_defs";
+
+        // ฟังก์ชันแปลง UTM → Lat/Lon
+        function convertUTMtoLatLng(geojson) {
+            geojson.features.forEach(f => {
+                if (f.geometry.type === "Polygon") {
+                    f.geometry.coordinates = f.geometry.coordinates.map(ring =>
+                        ring.map(coord => {
+                            // แปลงพิกัด UTM เป็น Lat/Lon
+                            let ll = proj4(from, to, coord);
+                            // Leaflet ใช้ [lat, lon] แต่ GeoJSON ใช้ [lon, lat]
+                            return [ll[0], ll[1]];
+                        })
+                    );
+                } else if (f.geometry.type === "MultiPolygon") {
+                    f.geometry.coordinates = f.geometry.coordinates.map(polygon =>
+                        polygon.map(ring =>
+                            ring.map(coord => {
+                                let ll = proj4(from, to, coord);
+                                return [ll[0], ll[1]];
+                            })
+                        )
+                    );
+                }
+            });
+            return geojson;
+        }
+
+        // โหลดไฟล์ GeoJSON
+        fetch("0Water_body.json")
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error(`ไม่สามารถโหลดไฟล์ได้: ${res.status}`);
+                }
+                return res.json();
+            })
+            .then(data => {
+                // แปลงพิกัด
+                let converted = convertUTMtoLatLng(data);
+                
+                // เพิ่ม GeoJSON layer ลงแผนที่
+                let geoLayer = L.geoJSON(converted, {
+                    style: { 
+                        color: "blue", 
+                        weight: 2,
+                        fillColor: "lightblue",
+                        fillOpacity: 0.5
+                    },
+                    onEachFeature: function(feature, layer) {
+                        if (feature.properties) {
+                            let popupContent = '<div><strong>ข้อมูลบ่อน้ำ</strong><br>';
+                            for (let key in feature.properties) {
+                                popupContent += `${key}: ${feature.properties[key]}<br>`;
+                            }
+                            popupContent += '</div>';
+                            layer.bindPopup(popupContent);
+                        }
+                    }
+                }).addTo(map);
+                
+                // เพิ่ม GeoJSON layer เข้าไปใน Layer Control
+                layerControl.addOverlay(geoLayer, "ชั้นข้อมูลบ่อน้ำ (Water Bodies)");
+                
+                // ปรับมุมมองให้พอดีกับข้อมูล
+                map.fitBounds(geoLayer.getBounds());
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('เกิดข้อผิดพลาดในการโหลดไฟล์: ' + error.message);
+            });
+    </script>
+</body>
+</html>
