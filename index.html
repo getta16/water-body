@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>แผนที่แหล่งน้ำ</title>
+    <title>บ่อน้ำ</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
      crossorigin=""/>
@@ -111,14 +111,35 @@
         var to   = "+proj=longlat +datum=WGS84 +no_defs";
 
         // ฟังก์ชันแปลง UTM → Lat/Lon
-        function convertUTMtoLatLng(geojson) {
-            geojson.features.forEach(f => {
+        function convertUTMtoLatLng(data) {
+            // ตรวจสอบว่าเป็น GeometryCollection หรือ FeatureCollection
+            if (data.type === "GeometryCollection" && data.geometries) {
+                // แปลง GeometryCollection เป็น FeatureCollection
+                data = {
+                    type: "FeatureCollection",
+                    features: data.geometries.map(geom => ({
+                        type: "Feature",
+                        geometry: geom,
+                        properties: {}
+                    }))
+                };
+            }
+            
+            // ตรวจสอบว่ามี features หรือไม่
+            if (!data || !data.features || !Array.isArray(data.features)) {
+                console.error('GeoJSON format ไม่ถูกต้อง:', data);
+                throw new Error('รูปแบบไฟล์ GeoJSON ไม่ถูกต้อง');
+            }
+
+            data.features.forEach(f => {
+                if (!f.geometry) return;
+                
                 if (f.geometry.type === "Polygon") {
                     f.geometry.coordinates = f.geometry.coordinates.map(ring =>
                         ring.map(coord => {
                             // แปลงพิกัด UTM เป็น Lat/Lon
                             let ll = proj4(from, to, coord);
-                            // Leaflet ใช้ [lat, lon] แต่ GeoJSON ใช้ [lon, lat]
+                            // GeoJSON ใช้ [lon, lat]
                             return [ll[0], ll[1]];
                         })
                     );
@@ -133,11 +154,11 @@
                     );
                 }
             });
-            return geojson;
+            return data;
         }
 
         // โหลดไฟล์ GeoJSON
-        fetch("0Water_body.json")
+        fetch("bonum.json")
             .then(res => {
                 if (!res.ok) {
                     throw new Error(`ไม่สามารถโหลดไฟล์ได้: ${res.status}`);
