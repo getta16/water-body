@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แผนที่แหล่งน้ำผิวดินระดับตำบล</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Sarabun', Arial, sans-serif;
+            background: #f5f7fa;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            color: #006FBF;
+            font-weight: 700;
+        }
+        
+        .filters {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+        }
+        
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .filter-label {
+            font-size: 13px;
+            color: #555;
+            font-weight: 600;
+        }
+        
+        .filters select {
+            padding: 10px 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            background: white;
+            transition: all 0.2s;
+            min-width: 180px;
+            font-weight: 500;
+        }
+        
+        .filters select:hover:not(:disabled) {
+            border-color: #006FBF;
+        }
+        
+        .filters select:focus {
+            outline: none;
+            border-color: #006FBF;
+            box-shadow: 0 0 0 3px rgba(0, 111, 191, 0.1);
+        }
+        
+        .filters select:disabled {
+            background: #f5f5f5;
+            color: #999;
+            cursor: not-allowed;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 420px;
+            height: calc(100vh - 100px);
+        }
+        
+        .map-container {
+            position: relative;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .sidebar {
+            background: white;
+            overflow-y: auto;
+            padding: 25px;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.08);
+        }
+        
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .sidebar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        .sidebar::-webkit-scrollbar-thumb {
+            background: #006FBF;
+            border-radius: 3px;
+        }
+        
+        .stat-box {
+            background: linear-gradient(135deg, #006FBF 0%, #004D8C 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 111, 191, 0.3);
+        }
+        
+        .stat-box .number {
+            font-size: 52px;
+            font-weight: 800;
+        }
+        
+        .stat-box .label {
+            font-size: 15px;
+            margin-top: 8px;
+            opacity: 0.95;
+        }
+        
+        .info-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border: 1px solid #e8e8e8;
+        }
+        
+        .info-box h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 15px;
+            font-weight: 700;
+            padding-left: 12px;
+            border-left: 4px solid #006FBF;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .info-item .label {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .info-item .value {
+            font-weight: 700;
+            color: #006FBF;
+            font-size: 15px;
+        }
+        
+        .type-grid {
+            display: grid;
+            gap: 10px;
+        }
+        
+        .type-item {
+            background: #f8f9fb;
+            padding: 14px 16px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid #006FBF;
+            transition: all 0.2s;
+        }
+        
+        .type-item:hover {
+            background: #e6f2ff;
+        }
+        
+        .type-item .label {
+            color: #444;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        
+        .type-item .value {
+            background: #006FBF;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 13px;
+            min-width: 40px;
+            text-align: center;
+        }
+        
+        .chart-container-wrapper {
+            height: 300px;
+            position: relative;
+            margin-top: 10px;
+        }
+        
+        /* Layer Control Styling */
+        .leaflet-control-layers {
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        /* Link Button - ใน Sidebar */
+        .sidebar-link-button {
+            display: block;
+            width: 100%;
+            background: linear-gradient(135deg, #006FBF 0%, #004D8C 100%);
+            color: white;
+            text-align: center;
+            padding: 16px 20px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 700;
+            text-decoration: none;
+            box-shadow: 0 4px 12px rgba(0, 111, 191, 0.3);
+            transition: all 0.3s;
+            margin-bottom: 16px;
+        }
+        
+        .sidebar-link-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 111, 191, 0.4);
+            background: linear-gradient(135deg, #0080d8 0%, #005fa3 100%);
+        }
+        
+        /* Legend Control */
+        .legend-control {
+            position: absolute;
+            bottom: 30px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            font-size: 13px;
+        }
+        
+        .legend-control h4 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            font-weight: 700;
+            color: #333;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .legend-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid #333;
+        }
+        
+        .legend-label {
+            font-size: 13px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr 350px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+            
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: 50vh 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>แผนที่แหล่งน้ำผิวดิน - จังหวัดกำแพงเพชร</h1>
+        <div class="filters">
+            <div class="filter-group">
+                <label class="filter-label">อำเภอ</label>
+                <select id="amphoeSelect">
+                    <option value="">ทั้งหมด</option>
+                    <option value="คลองลาน">คลองลาน</option>
+                    <option value="โกสัมพีนคร">โกสัมพีนคร</option>
+                    <option value="ปางศิลาทอง">ปางศิลาทอง</option>
+                    <option value="คลองขลุง">คลองขลุง</option>
+                    <option value="ขาณุวรลักษบุรี">ขาณุวรลักษบุรี</option>
+                    <option value="เมืองกำแพงเพชร">เมืองกำแพงเพชร</option>
+                    <option value="ไทรงาม">ไทรงาม</option>
+                    <option value="ทรายทองวัฒนา">ทรายทองวัฒนา</option>
+                    <option value="บึงสามัคคี">บึงสามัคคี</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">ตำบล</label>
+                <select id="tambonSelect" disabled>
+                    <option value="">กรุณาเลือกอำเภอก่อน</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="legend-control">
+                <h4>แหล่งที่มาข้อมูล</h4>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #B500B2; border-color: #B500B2;"></div>
+                    <span class="legend-label">เว็บไซต์ doonum.com</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #4da6ff; border-color: #006FBF;"></div>
+                    <span class="legend-label">แพลตฟอร์ม iTambon</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <div class="stat-box">
+                <div class="number" id="totalCount">0</div>
+                <div class="label">จำนวนแหล่งน้ำทั้งหมด</div>
+            </div>
+            
+            <div class="info-box">
+                <h3>ข้อมูลสรุป</h3>
+                <div class="info-item">
+                    <span class="label">พื้นที่รวม</span>
+                    <span class="value" id="totalArea">0 ไร่</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">ปริมาณน้ำ</span>
+                    <span class="value" id="waterVolume">0 ลบ.ม.</span>
+                </div>
+            </div>
+            
+            <div class="info-box">
+                <h3>ประเภทแหล่งน้ำ</h3>
+                <div class="type-grid" id="typeList"></div>
+            </div>
+            
+            <div class="info-box">
+                <h3>กราฟจำนวนแหล่งน้ำ</h3>
+                <div class="chart-container-wrapper">
+                    <canvas id="mainChart"></canvas>
+                </div>
+            </div>
+
+             <a href="https://iwasam.eng.kps.ku.ac.th/flow/itambon/water-source/" target="_blank" class="sidebar-link-button">
+                 ข้อมูลแหล่งน้ำผิวดิน 32 ตำบล
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const map = L.map('map').setView([16.240027, 99.450809], 10);
+
+        const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        });
+        
+        const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            maxZoom: 17,
+            attribution: '© OpenStreetMap, SRTM'
+        });
+        
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: '© Esri'
+        });
+        
+        osmLayer.addTo(map);
+
+        let waterData = null;
+        let waterLayersByTypeAndSource = {};
+        let subdistrictLayer = null;
+        let chartInstance = null;
+        let tambonsByAmphoe = {};
+
+        const from = "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs";
+        const to = "+proj=longlat +datum=WGS84 +no_defs";
+
+        function convertUTMtoLatLng(data) {
+            if (data.type === "GeometryCollection" && data.geometries) {
+                data = {
+                    type: "FeatureCollection",
+                    features: data.geometries.map(geom => ({
+                        type: "Feature",
+                        geometry: geom,
+                        properties: {}
+                    }))
+                };
+            }
+            
+            if (data.features) {
+                data.features.forEach(f => {
+                    if (!f.geometry) return;
+                    
+                    if (f.geometry.type === "Polygon") {
+                        f.geometry.coordinates = f.geometry.coordinates.map(ring =>
+                            ring.map(coord => proj4(from, to, coord))
+                        );
+                    } else if (f.geometry.type === "MultiPolygon") {
+                        f.geometry.coordinates = f.geometry.coordinates.map(polygon =>
+                            polygon.map(ring =>
+                                ring.map(coord => proj4(from, to, coord))
+                            )
+                        );
+                    }
+                });
+            }
+            return data;
+        }
+
+        function createChart(labels, data) {
+            const ctx = document.getElementById('mainChart');
+            
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+            
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'จำนวนแหล่งน้ำ',
+                        data: data,
+                        backgroundColor: '#006FBF',
+                        borderColor: '#004D8C',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            titleFont: { size: 13, weight: 'bold' },
+                            bodyFont: { size: 12 },
+                            callbacks: {
+                                label: function(context) {
+                                    return 'จำนวน: ' + context.parsed.y + ' แหล่ง';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                font: { size: 11, weight: '600' },
+                                color: '#666',
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f0f0f0' },
+                            ticks: {
+                                font: { size: 11, weight: '600' },
+                                color: '#666',
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateStatistics(features, selectedAmphoe) {
+            document.getElementById('totalCount').textContent = features.length;
+            
+            let totalRai = 0;
+            let totalCapacity = 0;
+            let hasCapacityData = false;
+            const typeCount = {};
+            const areaCount = {};
+            
+            features.forEach(f => {
+                const props = f.properties;
+                
+                if (props.Rai) {
+                    totalRai += parseFloat(props.Rai) || 0;
+                }
+                
+                if (props.capacity) {
+                    totalCapacity += parseFloat(props.capacity) || 0;
+                    hasCapacityData = true;
+                }
+                
+                const type = props.Class || 'ไม่ระบุ';
+                typeCount[type] = (typeCount[type] || 0) + 1;
+                
+                const area = selectedAmphoe ? (props.Tambon || 'ไม่ระบุ') : (props.Amphoe || 'ไม่ระบุ');
+                areaCount[area] = (areaCount[area] || 0) + 1;
+            });
+            
+            document.getElementById('totalArea').textContent = totalRai.toFixed(2) + ' ไร่';
+            
+            // ใช้ข้อมูล capacity ถ้ามี ไม่งั้นประมาณจากพื้นที่
+            let volume;
+            if (hasCapacityData && totalCapacity > 0) {
+                volume = totalCapacity.toFixed(0);
+            } else {
+                volume = (totalRai * 1600 * 3).toFixed(0);
+            }
+            document.getElementById('waterVolume').textContent = volume.toLocaleString() + ' ลบ.ม.';
+            
+            const typeList = document.getElementById('typeList');
+            typeList.innerHTML = '';
+            Object.entries(typeCount)
+                .sort((a, b) => b[1] - a[1])
+                .forEach(([type, count]) => {
+                    const item = document.createElement('div');
+                    item.className = 'type-item';
+                    item.innerHTML = `
+                        <span class="label">${type}</span>
+                        <span class="value">${count}</span>
+                    `;
+                    typeList.appendChild(item);
+                });
+            
+            const sorted = Object.entries(areaCount).sort((a, b) => b[1] - a[1]);
+            const labels = sorted.map(item => item[0]);
+            const data = sorted.map(item => item[1]);
+            
+            createChart(labels, data);
+        }
+
+        function updateTambonDropdown(amphoe) {
+            const tambonSelect = document.getElementById('tambonSelect');
+            tambonSelect.innerHTML = '<option value="">ทั้งหมด</option>';
+            
+            if (amphoe && tambonsByAmphoe[amphoe]) {
+                tambonsByAmphoe[amphoe].forEach(tambon => {
+                    const option = document.createElement('option');
+                    option.value = tambon;
+                    option.textContent = tambon;
+                    tambonSelect.appendChild(option);
+                });
+                tambonSelect.disabled = false;
+            } else {
+                tambonSelect.innerHTML = '<option value="">กรุณาเลือกอำเภอก่อน</option>';
+                tambonSelect.disabled = true;
+            }
+        }
+
+        function filterData() {
+            const amphoe = document.getElementById('amphoeSelect').value;
+            const tambon = document.getElementById('tambonSelect').value;
+            
+            if (!waterData) return;
+            
+            let filtered = waterData.features;
+            
+            if (tambon) {
+                filtered = filtered.filter(f => f.properties.Tambon === tambon);
+            } else if (amphoe) {
+                filtered = filtered.filter(f => f.properties.Amphoe === amphoe);
+            }
+            
+            // ลบ layer เก่า
+            Object.values(waterLayersByTypeAndSource).forEach(item => {
+                if (map.hasLayer(item.layer)) {
+                    map.removeLayer(item.layer);
+                }
+            });
+            waterLayersByTypeAndSource = {};
+            
+            // จัดกลุ่มตามประเภท
+            const groupedData = {};
+            filtered.forEach(f => {
+                const type = f.properties.Class || 'ไม่ระบุ';
+                const typeKey = `type_${type}`;
+                
+                if (!groupedData[typeKey]) {
+                    groupedData[typeKey] = {
+                        features: [],
+                        label: type
+                    };
+                }
+                groupedData[typeKey].features.push(f);
+            });
+            
+            // สร้าง layer ตามประเภท
+            Object.entries(groupedData).forEach(([key, data]) => {
+                const layerData = {
+                    type: "FeatureCollection",
+                    features: data.features
+                };
+                
+                const layer = L.geoJSON(layerData, {
+                    style: function(feature) {
+                        // กำหนดสีตามแหล่งที่มา
+                        const source = feature.properties.source || '';
+                        let fillColor = "#4da6ff";
+                        let borderColor = "#006FBF";
+                        
+                        if (source === "เว็บไซต์ doonum.com") {
+                            fillColor = "#B500B2"; // สีเหลือง
+                            borderColor = "#B500B2"; // ขอบสีเหลือง
+                        }
+                        
+                        return {
+                            color: borderColor,
+                            weight: 2,
+                            fillColor: fillColor,
+                            fillOpacity: 0.5
+                        };
+                    },
+                    onEachFeature: function(feature, layer) {
+                        if (feature.properties) {
+                            let popup = '<div style="font-family: Arial; min-width: 200px;"><strong style="color: #006FBF; font-size: 16px;">ข้อมูลแหล่งน้ำ</strong><br><br>';
+                            
+                            const fields = {
+                                'water_name': 'ชื่อ',
+                                'Class': 'ประเภท',
+                                'Amphoe': 'อำเภอ',
+                                'Tambon': 'ตำบล',
+                                'village_no': 'หมู่ที่',
+                                'Rai': 'พื้นที่ (ไร่)',
+                                'capacity': 'ความจุ (ลบ.ม.)',
+                                'source': 'แหล่งที่มา'
+                            };
+                            
+                            for (let key in fields) {
+                                if (feature.properties[key] && !(key === 'village_no' && feature.properties[key] === 0)) {
+                                    popup += `<strong>${fields[key]}:</strong> ${feature.properties[key]}<br>`;
+                                }
+                            }
+                            popup += '</div>';
+                            layer.bindPopup(popup);
+                        }
+                    }
+                }).addTo(map);
+                
+                waterLayersByTypeAndSource[key] = {
+                    layer: layer,
+                    label: data.label
+                };
+            });
+            
+            // Fit bounds
+            const allLayers = Object.values(waterLayersByTypeAndSource).map(item => item.layer);
+            if (allLayers.length > 0) {
+                const group = L.featureGroup(allLayers);
+                map.fitBounds(group.getBounds());
+            }
+            
+            updateStatistics(filtered, amphoe);
+        }
+
+        fetch("Subdistric_32Tambol.json")
+            .then(res => res.json())
+            .then(data => {
+                const converted = convertUTMtoLatLng(data);
+                subdistrictLayer = L.geoJSON(converted, {
+                    style: {
+                        color: "#999",
+                        weight: 1.5,
+                        fillColor: "transparent",
+                        fillOpacity: 0,
+                        dashArray: '3, 3'
+                    }
+                }).addTo(map);
+            });
+
+        fetch("bonum7.json")
+            .then(res => res.json())
+            .then(data => {
+                waterData = convertUTMtoLatLng(data);
+                
+                waterData.features.forEach(f => {
+                    const amphoe = f.properties.Amphoe;
+                    const tambon = f.properties.Tambon;
+                    if (amphoe && tambon) {
+                        if (!tambonsByAmphoe[amphoe]) {
+                            tambonsByAmphoe[amphoe] = new Set();
+                        }
+                        tambonsByAmphoe[amphoe].add(tambon);
+                    }
+                });
+                
+                for (let amphoe in tambonsByAmphoe) {
+                    tambonsByAmphoe[amphoe] = Array.from(tambonsByAmphoe[amphoe]).sort();
+                }
+                
+                filterData();
+            });
+
+        document.getElementById('amphoeSelect').addEventListener('change', function() {
+            const amphoe = this.value;
+            updateTambonDropdown(amphoe);
+            document.getElementById('tambonSelect').value = '';
+            filterData();
+        });
+
+        document.getElementById('tambonSelect').addEventListener('change', filterData);
+
+        const baseMaps = {
+            "แผนที่มาตรฐาน": osmLayer,
+            "แผนที่ภูมิประเทศ": topoLayer,
+            "ภาพดาวเทียม": satelliteLayer
+        };
+
+        // Overlay แยกตามประเภทเท่านั้น
+        const overlayMaps = {};
+
+        const layerControl = L.control.layers(baseMaps, overlayMaps, {
+            position: 'topright',
+            collapsed: true
+        }).addTo(map);
+
+        const originalFilterData = filterData;
+        filterData = function() {
+            originalFilterData();
+            
+            // ลบ overlay เก่าออก
+            Object.keys(overlayMaps).forEach(key => {
+                layerControl.removeLayer(overlayMaps[key]);
+                delete overlayMaps[key];
+            });
+            
+            // เพิ่ม overlay ตามประเภทเท่านั้น
+            Object.entries(waterLayersByTypeAndSource).forEach(([key, data]) => {
+                overlayMaps[data.label] = data.layer;
+                layerControl.addOverlay(data.layer, data.label);
+            });
+        };
+    </script>
+</body>
+</html>
