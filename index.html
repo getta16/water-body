@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แผนที่แหล่งน้ำผิวดิน - จังหวัดกำแพงเพชร</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #006FBF;
+            --primary-mid: #004D8C;
+            --accent: #0088CC;
+            --accent-light: #B3E5FC;
+            --bg: #FFFFFF;
+            --surface: #FFFFFF;
+            --text: #1C2A0E;
+            --text-muted: #5C6B4A;
+            --border: #E0E0E0;
+            --shadow: rgba(0, 111, 191, 0.12);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Prompt', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            color: #006FBF;
+            font-weight: 700;
+        }
+
+        .filters {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .filter-label {
+            font-size: 13px;
+            color: #555;
+            font-weight: 600;
+        }
+
+        .filters select {
+            padding: 10px 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            background: white;
+            transition: all 0.2s;
+            min-width: 180px;
+            font-weight: 400;
+            font-family: 'Prompt', sans-serif;
+        }
+
+        .filters select:hover:not(:disabled) {
+            border-color: #006FBF;
+        }
+
+        .filters select:focus {
+            outline: none;
+            border-color: #006FBF;
+            box-shadow: 0 0 0 3px rgba(0, 111, 191, 0.1);
+        }
+
+        .filters select:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            height: calc(100vh - 100px);
+        }
+
+        .map-container {
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .sidebar {
+            background: #F5F7FA;
+            overflow-y: auto;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            border-left: 1px solid var(--border);
+        }
+
+        .sidebar::-webkit-scrollbar { width: 5px; }
+        .sidebar::-webkit-scrollbar-track { background: transparent; }
+        .sidebar::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+
+        .stat-hero {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-mid) 100%);
+            border-radius: 14px;
+            padding: 32px 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 16px var(--shadow);
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-item .num {
+            font-family: 'Prompt', sans-serif;
+            font-size: 48px;
+            font-weight: 800;
+            color: white;
+            line-height: 1.1;
+        }
+
+        .stat-item .lbl {
+            font-size: 14px;
+            color: var(--accent-light);
+            margin-top: 10px;
+            letter-spacing: 0.4px;
+            font-weight: 500;
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 2px 8px var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-family: 'Prompt', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-title::before {
+            content: '';
+            display: block;
+            width: 4px;
+            height: 18px;
+            background: var(--accent);
+            border-radius: 2px;
+        }
+
+        .info-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            border-bottom: 1px solid #E8E8E8;
+        }
+        
+        .info-row:last-of-type {
+            border-bottom: none;
+        }
+
+        .info-row .label {
+            font-size: 15px;
+            color: #555;
+            font-weight: 400;
+        }
+
+        .info-row .value {
+            font-size: 16px;
+            color: var(--primary);
+            font-weight: 600;
+            font-family: 'Prompt', sans-serif;
+        }
+        
+        .info-note {
+            margin-top: 10px;
+            padding: 10px;
+            background: #FFF9E6;
+            border-left: 3px solid #FFA500;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        .type-list {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        .type-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            background: #F8F9FB;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.18s;
+        }
+
+        .type-item:hover {
+            background: #E6F2FF;
+            border-color: var(--accent);
+        }
+
+        .type-item.active {
+            background: #E6F2FF;
+            border-color: var(--accent);
+            box-shadow: 0 2px 8px rgba(0, 136, 204, 0.2);
+        }
+
+        .type-name {
+            flex: 1;
+            font-size: 14px;
+            color: var(--text);
+            font-weight: 600;
+            line-height: 1.3;
+        }
+
+        .type-count {
+            background: var(--primary);
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 11px;
+            border-radius: 10px;
+            min-width: 40px;
+            text-align: center;
+            font-family: 'Prompt', sans-serif;
+        }
+
+        .chart-wrapper {
+            height: 220px;
+            position: relative;
+        }
+
+        .link-button {
+            display: block;
+            margin-top: 16px;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-mid) 100%);
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px var(--shadow);
+        }
+
+        .link-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 111, 191, 0.3);
+        }
+
+        .link-button:active {
+            transform: translateY(0);
+        }
+
+        .leaflet-control-layers {
+            border-radius: 10px !important;
+            border: none !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15) !important;
+        }
+
+        .map-credit {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 500;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            color: #666;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+            max-width: 280px;
+        }
+
+        .map-credit strong {
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        @media (max-width: 1024px) {
+            .container { grid-template-columns: 1fr 340px; }
+        }
+
+        @media (max-width: 768px) {
+            .header { flex-wrap: wrap; height: auto; padding: 12px; gap: 10px; }
+            .container { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>แผนที่แหล่งน้ำผิวดิน - จังหวัดกำแพงเพชร</h1>
+    <div class="filters">
+        <div class="filter-group">
+            <label class="filter-label">อำเภอ</label>
+            <select id="amphoeSelect">
+                <option value="">ทั้งหมด</option>
+                <option value="คลองลาน">คลองลาน</option>
+                <option value="โกสัมพีนคร">โกสัมพีนคร</option>
+                <option value="ปางศิลาทอง">ปางศิลาทอง</option>
+                <option value="คลองขลุง">คลองขลุง</option>
+                <option value="ขาณุวรลักษบุรี">ขาณุวรลักษบุรี</option>
+                <option value="เมืองกำแพงเพชร">เมืองกำแพงเพชร</option>
+                <option value="ไทรงาม">ไทรงาม</option>
+                <option value="ทรายทองวัฒนา">ทรายทองวัฒนา</option>
+                <option value="บึงสามัคคี">บึงสามัคคี</option>
+                <option value="พรานกระต่าย">พรานกระต่าย</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label class="filter-label">ตำบล</label>
+            <select id="tambonSelect" disabled>
+                <option value="">กรุณาเลือกอำเภอก่อน</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="map-container">
+        <div id="map"></div>
+        <div class="map-credit">
+            <strong>แหล่งข้อมูล:</strong> แพลตฟอร์ม iTambon และเว็บไซต์ doonum.net
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <div class="stat-hero">
+            <div class="stat-item">
+                <div class="num" id="totalCount">0</div>
+                <div class="lbl">จำนวนแหล่งน้ำทั้งหมด</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">ข้อมูลสรุป</div>
+            <div class="info-grid">
+                <div class="info-row">
+                    <span class="label">พื้นที่รวม</span>
+                    <span class="value" id="totalArea">0 ไร่</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">ปริมาณน้ำ</span>
+                    <span class="value" id="waterVolume">0 ลบ.ม.</span>
+                </div>
+            </div>
+            <div class="info-note">
+                <strong>หมายเหตุ:</strong> ปริมาณน้ำคำนวณจากข้อมูล capacity (ถ้ามี) หรือประมาณจากพื้นที่ × ความลึกเฉลี่ย 3 เมตร
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">ประเภทแหล่งน้ำ</div>
+            <div class="type-list" id="typeList">
+                <div style="color:#999;font-size:13px;text-align:center;padding:10px;">กำลังโหลดข้อมูล...</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">กราฟจำนวนแหล่งน้ำ</div>
+            <div class="chart-wrapper">
+                <canvas id="mainChart"></canvas>
+            </div>
+        </div>
+        <a href="https://iwasam.eng.kps.ku.ac.th/flow/itambon/water-source/" target="_blank" class="link-button">
+                ดูข้อมูล 32 ตำบล
+            </a>
+    </div>
+</div>
+
+<script>
+const map = L.map('map').setView([16.240027, 99.450809], 10);
+
+const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap'
+});
+const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17, attribution: '© OpenTopoMap'
+});
+const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19, attribution: '© Esri'
+});
+
+osmLayer.addTo(map);
+
+const baseMaps = {
+    "แผนที่มาตรฐาน": osmLayer,
+    "แผนที่ภูมิประเทศ": topoLayer,
+    "ภาพดาวเทียม": satelliteLayer
+};
+L.control.layers(baseMaps, {}, { position: 'topright', collapsed: true }).addTo(map);
+
+let waterData = null;
+let waterLayers = {};
+let subdistrictLayer = null;
+let chartInstance = null;
+let tambonsByAmphoe = {};
+let activeTypeFilter = null;
+
+const from = "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs";
+const to = "+proj=longlat +datum=WGS84 +no_defs";
+
+function convertUTMtoLatLng(data) {
+    if (data.type === "GeometryCollection" && data.geometries) {
+        data = {
+            type: "FeatureCollection",
+            features: data.geometries.map(geom => ({ type: "Feature", geometry: geom, properties: {} }))
+        };
+    }
+    if (data.features) {
+        data.features.forEach(f => {
+            if (!f.geometry) return;
+            if (f.geometry.type === "Polygon") {
+                f.geometry.coordinates = f.geometry.coordinates.map(ring => ring.map(c => proj4(from, to, c)));
+            } else if (f.geometry.type === "MultiPolygon") {
+                f.geometry.coordinates = f.geometry.coordinates.map(poly => poly.map(ring => ring.map(c => proj4(from, to, c))));
+            }
+        });
+    }
+    return data;
+}
+
+function createChart(labels, data) {
+    const ctx = document.getElementById('mainChart');
+    if (chartInstance) chartInstance.destroy();
+
+    chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'จำนวนแหล่งน้ำ',
+                data: data,
+                backgroundColor: '#006FBF',
+                borderColor: '#004D8C',
+                borderWidth: 2,
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: { size: 13, weight: 'bold', family: 'Prompt' },
+                    bodyFont: { size: 12, family: 'Prompt' },
+                    callbacks: {
+                        label: function(context) {
+                            return 'จำนวน: ' + context.parsed.y + ' แหล่ง';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 11, weight: '600', family: 'Prompt' }, color: '#666', maxRotation: 45, minRotation: 45 }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#f0f0f0' },
+                    ticks: { font: { size: 11, weight: '600', family: 'Prompt' }, color: '#666', stepSize: 1 }
+                }
+            }
+        }
+    });
+}
+
+function updateStatistics(features, selectedAmphoe) {
+    document.getElementById('totalCount').textContent = features.length.toLocaleString();
+
+    let totalRai = 0;
+    let totalCapacity = 0;
+    let hasCapacityData = false;
+    const typeCount = {};
+    const areaCount = {};
+
+    features.forEach(f => {
+        const props = f.properties;
+        if (props.Rai) totalRai += parseFloat(props.Rai) || 0;
+        if (props.capacity) {
+            totalCapacity += parseFloat(props.capacity) || 0;
+            hasCapacityData = true;
+        }
+
+        const type = props.Class || 'ไม่ระบุ';
+        typeCount[type] = (typeCount[type] || 0) + 1;
+
+        const area = selectedAmphoe ? (props.Tambon || 'ไม่ระบุ') : (props.Amphoe || 'ไม่ระบุ');
+        areaCount[area] = (areaCount[area] || 0) + 1;
+    });
+
+    // แสดงพื้นที่ทศนิยม 1 ตำแหน่ง และใส่ comma
+    document.getElementById('totalArea').textContent = totalRai.toFixed(1).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + ' ไร่';
+
+    let volume;
+    if (hasCapacityData && totalCapacity > 0) {
+        volume = totalCapacity.toFixed(0);
+    } else {
+        volume = (totalRai * 1600 * 3).toFixed(0);
+    }
+    document.getElementById('waterVolume').textContent = parseInt(volume).toLocaleString() + ' ลบ.ม.';
+
+    const typeList = document.getElementById('typeList');
+    typeList.innerHTML = '';
+
+    const sorted = Object.entries(typeCount).sort((a, b) => b[1] - a[1]);
+    sorted.forEach(([type, count]) => {
+        const item = document.createElement('div');
+        item.className = 'type-item' + (activeTypeFilter === type ? ' active' : '');
+        item.innerHTML = `
+            <span class="type-name">${type}</span>
+            <span class="type-count">${count}</span>
+        `;
+
+        item.addEventListener('click', () => {
+            if (activeTypeFilter === type) {
+                activeTypeFilter = null;
+            } else {
+                activeTypeFilter = type;
+            }
+            filterData();
+        });
+
+        typeList.appendChild(item);
+    });
+
+    const sortedArea = Object.entries(areaCount).sort((a, b) => b[1] - a[1]);
+    const labels = sortedArea.map(item => item[0]);
+    const data = sortedArea.map(item => item[1]);
+
+    createChart(labels, data);
+}
+
+function updateTambonDropdown(amphoe) {
+    const sel = document.getElementById('tambonSelect');
+    sel.innerHTML = '<option value="">ทั้งหมด</option>';
+
+    if (amphoe && tambonsByAmphoe[amphoe]) {
+        tambonsByAmphoe[amphoe].forEach(t => {
+            const o = document.createElement('option');
+            o.value = t; o.textContent = t;
+            sel.appendChild(o);
+        });
+        sel.disabled = false;
+    } else {
+        sel.innerHTML = '<option value="">กรุณาเลือกอำเภอก่อน</option>';
+        sel.disabled = true;
+    }
+}
+
+function filterData() {
+    const amphoe = document.getElementById('amphoeSelect').value;
+    const tambon = document.getElementById('tambonSelect').value;
+
+    if (!waterData) return;
+
+    let filtered = waterData.features;
+
+    if (tambon) {
+        filtered = filtered.filter(f => f.properties.Tambon === tambon);
+    } else if (amphoe) {
+        filtered = filtered.filter(f => f.properties.Amphoe === amphoe);
+    }
+
+    let displayFeatures = filtered;
+    if (activeTypeFilter) {
+        displayFeatures = filtered.filter(f => (f.properties.Class || 'ไม่ระบุ') === activeTypeFilter);
+    }
+
+    Object.values(waterLayers).forEach(layer => {
+        if (map.hasLayer(layer)) map.removeLayer(layer);
+    });
+    waterLayers = {};
+
+    if (displayFeatures.length > 0) {
+        const layerData = {
+            type: "FeatureCollection",
+            features: displayFeatures
+        };
+
+        const layer = L.geoJSON(layerData, {
+            style: function(feature) {
+                const type = feature.properties.Class || '';
+                let fillColor = "#4da6ff";
+                let borderColor = "#006FBF";
+
+                // สีสำหรับอ่างเก็บน้ำ
+                if (type === "อ่างเก็บน้ำ") {
+                    fillColor = "#FF6B6B";
+                    borderColor = "#C92A2A";
+                }
+
+                return {
+                    color: borderColor,
+                    weight: 2,
+                    fillColor: fillColor,
+                    fillOpacity: 0.5
+                };
+            },
+            onEachFeature: function(feature, layer) {
+                if (feature.properties) {
+                    let popup = '<div style="font-family: Prompt, sans-serif; min-width: 220px;"><div style="background:#006FBF;color:white;padding:10px 14px;margin:-13px -13px 10px;border-radius:8px 8px 0 0;font-size:16px;font-weight:600;">ข้อมูลแหล่งน้ำ</div>';
+
+                    const fields = {
+                        'water_name': 'ชื่อ',
+                        'Class': 'ประเภท',
+                        'Amphoe': 'อำเภอ',
+                        'Tambon': 'ตำบล',
+                        'village_no': 'หมู่ที่',
+                        'Rai': 'พื้นที่ (ไร่)',
+                        'capacity': 'ความจุ (ลบ.ม.)',
+                        'source': 'แหล่งที่มา'
+                    };
+
+                    for (let key in fields) {
+                        if (feature.properties[key] && !(key === 'village_no' && feature.properties[key] === 0)) {
+                            let value = feature.properties[key];
+                            
+                            // ปัดเศษทศนิยมสำหรับพื้นที่
+                            if (key === 'Rai' && !isNaN(value)) {
+                                value = parseFloat(value).toFixed(1);
+                            }
+                            
+                            popup += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:14px;">
+                                <span style="color:#666;font-weight:600;">${fields[key]}</span>
+                                <span style="color:#333;font-weight:600;">${value}</span>
+                            </div>`;
+                        }
+                    }
+                    popup += '</div>';
+                    layer.bindPopup(popup);
+                }
+            }
+        }).addTo(map);
+
+        waterLayers['main'] = layer;
+        map.fitBounds(layer.getBounds());
+    }
+
+    updateStatistics(filtered, amphoe);
+}
+
+fetch("Subdistric_32Tambol.json")
+    .then(r => r.json())
+    .then(data => {
+        const converted = convertUTMtoLatLng(data);
+        subdistrictLayer = L.geoJSON(converted, {
+            style: {
+                color: "#555",
+                weight: 1.5,
+                fillColor: "transparent",
+                fillOpacity: 0,
+                dashArray: '4, 4'
+            }
+        }).addTo(map);
+    });
+
+// โหลดไฟล์แหล่งน้ำทั้ง 2 ไฟล์แล้วรวมกัน
+Promise.all([
+    fetch("bonum9_1.json").then(r => r.json()),
+    fetch("bonum9_2.json").then(r => r.json())
+])
+    .then(([data1, data2]) => {
+        // รวมข้อมูลจาก 2 ไฟล์
+        let combinedData = {
+            type: "FeatureCollection",
+            features: []
+        };
+
+        // แปลงและรวม data1
+        const converted1 = convertUTMtoLatLng(data1);
+        if (converted1.features) {
+            combinedData.features.push(...converted1.features);
+        }
+
+        // แปลงและรวม data2
+        const converted2 = convertUTMtoLatLng(data2);
+        if (converted2.features) {
+            combinedData.features.push(...converted2.features);
+        }
+
+        waterData = combinedData;
+
+        // สร้างรายการตำบลตามอำเภอ
+        waterData.features.forEach(f => {
+            const amphoe = f.properties.Amphoe;
+            const tambon = f.properties.Tambon;
+            if (amphoe && tambon) {
+                if (!tambonsByAmphoe[amphoe]) {
+                    tambonsByAmphoe[amphoe] = new Set();
+                }
+                tambonsByAmphoe[amphoe].add(tambon);
+            }
+        });
+
+        for (let amphoe in tambonsByAmphoe) {
+            tambonsByAmphoe[amphoe] = Array.from(tambonsByAmphoe[amphoe]).sort();
+        }
+
+        console.log(`โหลดข้อมูลสำเร็จ: ${combinedData.features.length} แหล่งน้ำ`);
+        filterData();
+    })
+    .catch(error => {
+        console.error('เกิดข้อผิดพลาดในการโหลดข้อมูล:', error);
+        alert('ไม่สามารถโหลดข้อมูลแหล่งน้ำได้ กรุณาตรวจสอบไฟล์ bonum9_1.json และ bonum9_2.json');
+    });
+
+document.getElementById('amphoeSelect').addEventListener('change', function() {
+    activeTypeFilter = null;
+    updateTambonDropdown(this.value);
+    document.getElementById('tambonSelect').value = '';
+    filterData();
+});
+
+document.getElementById('tambonSelect').addEventListener('change', function() {
+    activeTypeFilter = null;
+    filterData();
+});
+</script>
+</body>
+</html>
