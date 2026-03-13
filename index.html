@@ -562,7 +562,7 @@ function updateStatistics(features, selectedAmphoe) {
         item.className = 'type-item' + (activeTypeFilter === type ? ' active' : '');
         item.innerHTML = `
             <span class="type-name">${type}</span>
-            <span class="type-count">${count}</span>
+            <span class="type-count">${count.toLocaleString()}</span>
         `;
 
         item.addEventListener('click', () => {
@@ -674,6 +674,11 @@ function filterData() {
                                 value = parseFloat(value).toFixed(1);
                             }
                             
+                            // ใส่ comma ให้ capacity
+                            if (key === 'capacity' && !isNaN(value)) {
+                            value = parseInt(value).toLocaleString();
+                            }
+
                             popup += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:14px;">
                                 <span style="color:#666;font-weight:600;">${fields[key]}</span>
                                 <span style="color:#333;font-weight:600;">${value}</span>
