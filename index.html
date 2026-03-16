@@ -483,6 +483,7 @@ let tambonsByAmphoe = {};
 let activeTypeFilter = null;
 let userLocationMarker = null;
 let userLocationCircle = null;
+let userBufferCircle = null;
 
 const from = "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs";
 const to = "+proj=longlat +datum=WGS84 +no_defs";
@@ -600,7 +601,7 @@ function updateStatistics(features, selectedAmphoe) {
         item.className = 'type-item' + (activeTypeFilter === type ? ' active' : '');
         item.innerHTML = `
             <span class="type-name">${type}</span>
-            <span class="type-count">${count.toLocaleString()}</span>
+            <span class="type-count">${count}</span>
         `;
 
         item.addEventListener('click', () => {
@@ -712,11 +713,6 @@ function filterData() {
                                 value = parseFloat(value).toFixed(1);
                             }
                             
-                            // ใส่ comma ให้ capacity
-                            if (key === 'capacity' && !isNaN(value)) {
-                                value = parseInt(value).toLocaleString();
-                            }
-
                             popup += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:14px;">
                                 <span style="color:#666;font-weight:600;">${fields[key]}</span>
                                 <span style="color:#333;font-weight:600;">${value}</span>
@@ -843,14 +839,16 @@ document.getElementById('locateBtn').addEventListener('click', function() {
         function(position) {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
-            const accuracy = position.coords.accuracy;
 
-            // ลบ marker เก่า (ถ้ามี)
+            // ลบ marker และวงกลมเก่า (ถ้ามี)
             if (userLocationMarker) {
                 map.removeLayer(userLocationMarker);
             }
             if (userLocationCircle) {
                 map.removeLayer(userLocationCircle);
+            }
+            if (userBufferCircle) {
+                map.removeLayer(userBufferCircle);
             }
 
             // สร้าง marker ตำแหน่งผู้ใช้
@@ -863,28 +861,72 @@ document.getElementById('locateBtn').addEventListener('click', function() {
                 })
             }).addTo(map);
 
-            // สร้างวงกลมแสดงความแม่นยำ
-            userLocationCircle = L.circle([lat, lng], {
-                radius: accuracy,
+            // สร้างวงกลม Buffer 1 กม. (โปร่งแสง 50%)
+            userBufferCircle = L.circle([lat, lng], {
+                radius: 1000, // 1 กิโลเมตร
                 color: '#006FBF',
                 fillColor: '#006FBF',
                 fillOpacity: 0.1,
-                weight: 1
+                opacity: 0.5,
+                weight: 2
             }).addTo(map);
+
+            // นับจำนวนบ่อน้ำในระยะ 1 กม.
+            let waterSourcesInRange = 0;
+            if (waterData && waterData.features) {
+                waterData.features.forEach(feature => {
+                    if (feature.geometry && feature.geometry.type === "Polygon") {
+                        // หาจุดศูนย์กลางของ polygon
+                        const coords = feature.geometry.coordinates[0];
+                        let sumLat = 0, sumLng = 0;
+                        coords.forEach(coord => {
+                            sumLng += coord[0];
+                            sumLat += coord[1];
+                        });
+                        const centerLat = sumLat / coords.length;
+                        const centerLng = sumLng / coords.length;
+                        
+                        // คำนวณระยะทาง
+                        const distance = map.distance([lat, lng], [centerLat, centerLng]);
+                        if (distance <= 1000) {
+                            waterSourcesInRange++;
+                        }
+                    } else if (feature.geometry && feature.geometry.type === "MultiPolygon") {
+                        // สำหรับ MultiPolygon ใช้ polygon แรก
+                        const coords = feature.geometry.coordinates[0][0];
+                        let sumLat = 0, sumLng = 0;
+                        coords.forEach(coord => {
+                            sumLng += coord[0];
+                            sumLat += coord[1];
+                        });
+                        const centerLat = sumLat / coords.length;
+                        const centerLng = sumLng / coords.length;
+                        
+                        const distance = map.distance([lat, lng], [centerLat, centerLng]);
+                        if (distance <= 1000) {
+                            waterSourcesInRange++;
+                        }
+                    }
+                });
+            }
 
             // Popup แสดงข้อมูลตำแหน่ง
             userLocationMarker.bindPopup(`
                 <div style="font-family: Prompt, sans-serif; text-align: center;">
                     <strong style="color: #006FBF; font-size: 15px;">📍 ตำแหน่งของคุณ</strong><br>
-                    <div style="margin-top: 8px; font-size: 13px; color: #666;">
+                    <div style="margin-top: 8px; font-size: 13px; color: #666; text-align: left;">
                         <strong>ละติจูด:</strong> ${lat.toFixed(6)}<br>
                         <strong>ลองจิจูด:</strong> ${lng.toFixed(6)}<br>
+                        <div style="margin-top: 8px; padding: 8px; background: #E6F2FF; border-radius: 6px; border-left: 3px solid #006FBF;">
+                            <strong style="color: #006FBF;">แหล่งน้ำในระยะ 1 กม.:</strong><br>
+                            <span style="font-size: 20px; font-weight: 700; color: #006FBF;">${waterSourcesInRange.toLocaleString()}</span> แหล่ง
+                        </div>
                     </div>
                 </div>
             `).openPopup();
 
-            // ซูมไปยังตำแหน่งผู้ใช้
-            map.setView([lat, lng], 15);
+            // ซูมไปยังตำแหน่งผู้ใช้พร้อมแสดง buffer
+            map.fitBounds(userBufferCircle.getBounds(), { padding: [50, 50] });
 
             btn.classList.remove('loading');
             btn.classList.add('active');
