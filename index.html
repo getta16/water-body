@@ -325,6 +325,42 @@
             font-weight: 700;
         }
 
+        .location-button {
+            position: absolute;
+            top: 80px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            border: 2px solid rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            width: 34px;
+            height: 34px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            transition: all 0.2s;
+        }
+
+        .location-button:hover {
+            background: #f4f4f4;
+        }
+
+        .location-button:active {
+            background: #e0e0e0;
+        }
+
+        .location-button.loading {
+            color: #999;
+        }
+
+        .location-button.active {
+            color: #006FBF;
+            border-color: #006FBF;
+        }
+
         @media (max-width: 1024px) {
             .container { grid-template-columns: 1fr 340px; }
         }
@@ -353,7 +389,6 @@
                 <option value="ไทรงาม">ไทรงาม</option>
                 <option value="ทรายทองวัฒนา">ทรายทองวัฒนา</option>
                 <option value="บึงสามัคคี">บึงสามัคคี</option>
-                <option value="พรานกระต่าย">พรานกระต่าย</option>
             </select>
         </div>
         <div class="filter-group">
@@ -368,6 +403,7 @@
 <div class="container">
     <div class="map-container">
         <div id="map"></div>
+        <button class="location-button" id="locateBtn" title="แสดงตำแหน่งของฉัน">📍</button>
         <div class="map-credit">
             <strong>แหล่งข้อมูล:</strong> แพลตฟอร์ม iTambon และเว็บไซต์ doonum.net
         </div>
@@ -410,10 +446,10 @@
             <div class="chart-wrapper">
                 <canvas id="mainChart"></canvas>
             </div>
-        </div>
-        <a href="https://iwasam.eng.kps.ku.ac.th/flow/itambon/water-source/" target="_blank" class="link-button">
+            <a href="https://iwasam.eng.kps.ku.ac.th/flow/itambon/water-source/" target="_blank" class="link-button">
                 ดูข้อมูล 32 ตำบล
             </a>
+        </div>
     </div>
 </div>
 
@@ -445,6 +481,8 @@ let subdistrictLayer = null;
 let chartInstance = null;
 let tambonsByAmphoe = {};
 let activeTypeFilter = null;
+let userLocationMarker = null;
+let userLocationCircle = null;
 
 const from = "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs";
 const to = "+proj=longlat +datum=WGS84 +no_defs";
@@ -562,7 +600,7 @@ function updateStatistics(features, selectedAmphoe) {
         item.className = 'type-item' + (activeTypeFilter === type ? ' active' : '');
         item.innerHTML = `
             <span class="type-name">${type}</span>
-            <span class="type-count">${count.toLocaleString()}</span>
+            <span class="type-count">${count}</span>
         `;
 
         item.addEventListener('click', () => {
@@ -674,11 +712,6 @@ function filterData() {
                                 value = parseFloat(value).toFixed(1);
                             }
                             
-                            // ใส่ comma ให้ capacity
-                            if (key === 'capacity' && !isNaN(value)) {
-                            value = parseInt(value).toLocaleString();
-                            }
-
                             popup += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:14px;">
                                 <span style="color:#666;font-weight:600;">${fields[key]}</span>
                                 <span style="color:#333;font-weight:600;">${value}</span>
@@ -713,33 +746,48 @@ fetch("Subdistric_32Tambol.json")
         }).addTo(map);
     });
 
-// โหลดไฟล์แหล่งน้ำทั้ง 2 ไฟล์แล้วรวมกัน
+// โหลดไฟล์แหล่งน้ำทั้ง 2 ไฟล์พร้อมกัน
 Promise.all([
     fetch("bonum9_1.json").then(r => r.json()),
     fetch("bonum9_2.json").then(r => r.json())
 ])
     .then(([data1, data2]) => {
         // รวมข้อมูลจาก 2 ไฟล์
-        let combinedData = {
+        const combinedData = {
             type: "FeatureCollection",
             features: []
         };
 
-        // แปลงและรวม data1
-        const converted1 = convertUTMtoLatLng(data1);
-        if (converted1.features) {
-            combinedData.features.push(...converted1.features);
+        // ถ้าเป็น FeatureCollection
+        if (data1.type === "FeatureCollection" && data1.features) {
+            combinedData.features = combinedData.features.concat(data1.features);
+        }
+        if (data2.type === "FeatureCollection" && data2.features) {
+            combinedData.features = combinedData.features.concat(data2.features);
         }
 
-        // แปลงและรวม data2
-        const converted2 = convertUTMtoLatLng(data2);
-        if (converted2.features) {
-            combinedData.features.push(...converted2.features);
+        // ถ้าเป็น GeometryCollection
+        if (data1.type === "GeometryCollection" && data1.geometries) {
+            const features1 = data1.geometries.map(geom => ({
+                type: "Feature",
+                geometry: geom,
+                properties: geom.properties || {}
+            }));
+            combinedData.features = combinedData.features.concat(features1);
+        }
+        if (data2.type === "GeometryCollection" && data2.geometries) {
+            const features2 = data2.geometries.map(geom => ({
+                type: "Feature",
+                geometry: geom,
+                properties: geom.properties || {}
+            }));
+            combinedData.features = combinedData.features.concat(features2);
         }
 
-        waterData = combinedData;
+        console.log(`โหลดข้อมูลสำเร็จ: ${combinedData.features.length} รายการ`);
 
-        // สร้างรายการตำบลตามอำเภอ
+        waterData = convertUTMtoLatLng(combinedData);
+
         waterData.features.forEach(f => {
             const amphoe = f.properties.Amphoe;
             const tambon = f.properties.Tambon;
@@ -755,12 +803,11 @@ Promise.all([
             tambonsByAmphoe[amphoe] = Array.from(tambonsByAmphoe[amphoe]).sort();
         }
 
-        console.log(`โหลดข้อมูลสำเร็จ: ${combinedData.features.length} แหล่งน้ำ`);
         filterData();
     })
     .catch(error => {
         console.error('เกิดข้อผิดพลาดในการโหลดข้อมูล:', error);
-        alert('ไม่สามารถโหลดข้อมูลแหล่งน้ำได้ กรุณาตรวจสอบไฟล์ bonum9_1.json และ bonum9_2.json');
+        alert('ไม่สามารถโหลดข้อมูลได้ กรุณาตรวจสอบไฟล์ bonum9_1.json และ bonum9_2.json');
     });
 
 document.getElementById('amphoeSelect').addEventListener('change', function() {
@@ -773,6 +820,98 @@ document.getElementById('amphoeSelect').addEventListener('change', function() {
 document.getElementById('tambonSelect').addEventListener('change', function() {
     activeTypeFilter = null;
     filterData();
+});
+
+// ฟังก์ชันแสดงตำแหน่งผู้ใช้
+document.getElementById('locateBtn').addEventListener('click', function() {
+    const btn = this;
+    
+    if (!navigator.geolocation) {
+        alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
+        return;
+    }
+
+    btn.classList.add('loading');
+    btn.textContent = '⏳';
+
+    navigator.geolocation.getCurrentPosition(
+        function(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            // ลบ marker เก่า (ถ้ามี)
+            if (userLocationMarker) {
+                map.removeLayer(userLocationMarker);
+            }
+            if (userLocationCircle) {
+                map.removeLayer(userLocationCircle);
+            }
+
+            // สร้าง marker ตำแหน่งผู้ใช้
+            userLocationMarker = L.marker([lat, lng], {
+                icon: L.divIcon({
+                    className: 'user-location-icon',
+                    html: '<div style="background: #006FBF; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(0,111,191,0.5);"></div>',
+                    iconSize: [22, 22],
+                    iconAnchor: [11, 11]
+                })
+            }).addTo(map);
+
+            // สร้างวงกลมแสดงความแม่นยำ
+            userLocationCircle = L.circle([lat, lng], {
+                radius: accuracy,
+                color: '#006FBF',
+                fillColor: '#006FBF',
+                fillOpacity: 0.1,
+                weight: 1
+            }).addTo(map);
+
+            // Popup แสดงข้อมูลตำแหน่ง
+            userLocationMarker.bindPopup(`
+                <div style="font-family: Prompt, sans-serif; text-align: center;">
+                    <strong style="color: #006FBF; font-size: 15px;">📍 ตำแหน่งของคุณ</strong><br>
+                    <div style="margin-top: 8px; font-size: 13px; color: #666;">
+                        <strong>ละติจูด:</strong> ${lat.toFixed(6)}<br>
+                        <strong>ลองจิจูด:</strong> ${lng.toFixed(6)}<br>
+                        <strong>ความแม่นยำ:</strong> ±${accuracy.toFixed(0)} เมตร
+                    </div>
+                </div>
+            `).openPopup();
+
+            // ซูมไปยังตำแหน่งผู้ใช้
+            map.setView([lat, lng], 15);
+
+            btn.classList.remove('loading');
+            btn.classList.add('active');
+            btn.textContent = '📍';
+        },
+        function(error) {
+            btn.classList.remove('loading');
+            btn.textContent = '📍';
+            
+            let errorMsg = 'ไม่สามารถระบุตำแหน่งได้';
+            
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMsg = 'คุณไม่อนุญาตให้เข้าถึงตำแหน่ง\nกรุณาอนุญาตในการตั้งค่าเบราว์เซอร์';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMsg = 'ไม่สามารถระบุตำแหน่งได้\nกรุณาตรวจสอบ GPS';
+                    break;
+                case error.TIMEOUT:
+                    errorMsg = 'หมดเวลาในการระบุตำแหน่ง\nกรุณาลองใหม่อีกครั้ง';
+                    break;
+            }
+            
+            alert(errorMsg);
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        }
+    );
 });
 </script>
 </body>
