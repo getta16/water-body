@@ -251,6 +251,14 @@
             box-shadow: 0 2px 8px rgba(0, 136, 204, 0.2);
         }
 
+        .type-dot {
+            width: 22px;
+            height: 14px;
+            border-radius: 3px;
+            flex-shrink: 0;
+            border: 1.5px solid rgba(0,0,0,0.15);
+        }
+
         .type-name {
             flex: 1;
             font-size: 14px;
@@ -260,7 +268,6 @@
         }
 
         .type-count {
-            background: var(--primary);
             color: white;
             font-size: 12px;
             font-weight: 600;
@@ -331,34 +338,38 @@
             right: 10px;
             z-index: 1000;
             background: white;
-            border: 2px solid rgba(0, 0, 0, 0.2);
-            border-radius: 4px;
-            width: 34px;
-            height: 34px;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
-            transition: all 0.2s;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+            transition: background 0.2s, box-shadow 0.2s;
         }
 
         .location-button:hover {
-            background: #f4f4f4;
+            background: #f5f5f5;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
         }
 
         .location-button:active {
-            background: #e0e0e0;
+            background: #e8e8e8;
         }
 
-        .location-button.loading {
-            color: #999;
+        .location-button.loading svg {
+            animation: spin 1s linear infinite;
         }
 
-        .location-button.active {
-            color: #006FBF;
-            border-color: #006FBF;
+        .location-button.active svg path {
+            fill: #1A73E8;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
         @media (max-width: 1024px) {
@@ -389,7 +400,6 @@
                 <option value="ไทรงาม">ไทรงาม</option>
                 <option value="ทรายทองวัฒนา">ทรายทองวัฒนา</option>
                 <option value="บึงสามัคคี">บึงสามัคคี</option>
-                <option value="พรานกระต่าย">พรานกระต่าย</option>
             </select>
         </div>
         <div class="filter-group">
@@ -404,7 +414,11 @@
 <div class="container">
     <div class="map-container">
         <div id="map"></div>
-        <button class="location-button" id="locateBtn" title="แสดงตำแหน่งของฉัน">📍</button>
+        <button class="location-button" id="locateBtn" title="แสดงตำแหน่งของฉัน">
+            <svg id="locateIcon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="#5F6368">
+                <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+            </svg>
+        </button>
         <div class="map-credit">
             <strong>แหล่งข้อมูล:</strong> แพลตฟอร์ม iTambon และเว็บไซต์ doonum.net
         </div>
@@ -431,7 +445,7 @@
                 </div>
             </div>
             <div class="info-note">
-                <strong>หมายเหตุ:</strong> ปริมาณน้ำคำนวณจากข้อมูล capacity (ถ้ามี) หรือประมาณจากพื้นที่ × ความลึกเฉลี่ย 3 เมตร
+                <strong>หมายเหตุ:</strong> ปริมาณน้ำคำนวณจากข้อมูล capacity (ถ้ามี) หรือประมาณจากพื้นที่ X ความลึกเฉลี่ย 3 เมตร
             </div>
         </div>
 
@@ -449,7 +463,7 @@
             </div>
         </div>
         <a href="https://iwasam.eng.kps.ku.ac.th/flow/itambon/water-source/" target="_blank" class="link-button">
-                ดูข้อมูล 32 ตำบล
+                ดูข้อมูลแหล่งน้ำ 32 ตำบล
             </a>
     </div>
 </div>
@@ -484,7 +498,14 @@ let tambonsByAmphoe = {};
 let activeTypeFilter = null;
 let userLocationMarker = null;
 let userLocationCircle = null;
-let userBufferCircle = null;
+let userBufferLayer = null;
+let locationActive = false;
+let typeColorMap = {};
+
+const TYPE_PALETTE = [
+    { fill: '#006fbf', border: '#1557B0' },
+];
+const PALETTE_YELLOW = { fill: '#793AE8', border: '#6E247A' };
 
 const from = "+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs";
 const to = "+proj=longlat +datum=WGS84 +no_defs";
@@ -598,11 +619,13 @@ function updateStatistics(features, selectedAmphoe) {
 
     const sorted = Object.entries(typeCount).sort((a, b) => b[1] - a[1]);
     sorted.forEach(([type, count]) => {
+        const colors = typeColorMap[type] || { fill: '#4da6ff', border: '#006FBF' };
         const item = document.createElement('div');
         item.className = 'type-item' + (activeTypeFilter === type ? ' active' : '');
         item.innerHTML = `
+            <span class="type-dot" style="background:${colors.fill};"></span>
             <span class="type-name">${type}</span>
-            <span class="type-count">${count.toLocaleString()}</span>
+            <span class="type-count" style="background:${colors.fill};">${count.toLocaleString()}</span>
         `;
 
         item.addEventListener('click', () => {
@@ -655,6 +678,23 @@ function filterData() {
         filtered = filtered.filter(f => f.properties.Amphoe === amphoe);
     }
 
+    // คำนวณสีของแต่ละประเภทก่อน render
+    const typeCount = {};
+    filtered.forEach(f => {
+        const type = f.properties.Class || 'ไม่ระบุ';
+        typeCount[type] = (typeCount[type] || 0) + 1;
+    });
+    typeColorMap = {};
+    let paletteIdx = 0;
+    Object.keys(typeCount).forEach(type => {
+        if (type.includes('อ่างเก็บน้ำ')) {
+            typeColorMap[type] = PALETTE_YELLOW;
+        } else {
+            typeColorMap[type] = TYPE_PALETTE[paletteIdx % TYPE_PALETTE.length];
+            paletteIdx++;
+        }
+    });
+
     let displayFeatures = filtered;
     if (activeTypeFilter) {
         displayFeatures = filtered.filter(f => (f.properties.Class || 'ไม่ระบุ') === activeTypeFilter);
@@ -673,20 +713,12 @@ function filterData() {
 
         const layer = L.geoJSON(layerData, {
             style: function(feature) {
-                const type = feature.properties.Class || '';
-                let fillColor = "#4da6ff";
-                let borderColor = "#006FBF";
-
-                // สีสำหรับอ่างเก็บน้ำ
-                if (type === "อ่างเก็บน้ำ") {
-                    fillColor = "#FF6B6B";
-                    borderColor = "#C92A2A";
-                }
-
+                const type = feature.properties.Class || 'ไม่ระบุ';
+                const colors = typeColorMap[type] || { fill: '#4da6ff', border: '#006FBF' };
                 return {
-                    color: borderColor,
+                    color: colors.border,
                     weight: 2,
-                    fillColor: fillColor,
+                    fillColor: colors.fill,
                     fillOpacity: 0.5
                 };
             },
@@ -713,10 +745,12 @@ function filterData() {
                             if (key === 'Rai' && !isNaN(value)) {
                                 value = parseFloat(value).toFixed(1);
                             }
+                            
                             // ใส่ comma ให้ capacity
                             if (key === 'capacity' && !isNaN(value)) {
-                            value = parseInt(value).toLocaleString();
+                                value = parseInt(value).toLocaleString();
                             }
+
                             popup += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:14px;">
                                 <span style="color:#666;font-weight:600;">${fields[key]}</span>
                                 <span style="color:#333;font-weight:600;">${value}</span>
@@ -827,121 +861,114 @@ document.getElementById('tambonSelect').addEventListener('change', function() {
     filterData();
 });
 
-// ฟังก์ชันแสดงตำแหน่งผู้ใช้
+function countFeaturesWithin1km(lat, lng) {
+    if (!waterData) return 0;
+    const userLatLng = L.latLng(lat, lng);
+    let count = 0;
+    waterData.features.forEach(f => {
+        if (!f.geometry) return;
+        let coords = null;
+        if (f.geometry.type === 'Polygon') coords = f.geometry.coordinates[0];
+        else if (f.geometry.type === 'MultiPolygon') coords = f.geometry.coordinates[0][0];
+        if (!coords || coords.length === 0) return;
+        const avgLng = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+        const avgLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+        if (userLatLng.distanceTo(L.latLng(avgLat, avgLng)) <= 1000) count++;
+    });
+    return count;
+}
+
+function clearLocation() {
+    if (userLocationMarker) { map.removeLayer(userLocationMarker); userLocationMarker = null; }
+    if (userLocationCircle) { map.removeLayer(userLocationCircle); userLocationCircle = null; }
+    if (userBufferLayer) { map.removeLayer(userBufferLayer); userBufferLayer = null; }
+}
+
+const locateIcon = (color) => `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="${color}"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>`;
+
 document.getElementById('locateBtn').addEventListener('click', function() {
     const btn = this;
-    
+
+    if (locationActive) {
+        clearLocation();
+        locationActive = false;
+        btn.classList.remove('active');
+        btn.innerHTML = locateIcon('#5F6368');
+        return;
+    }
+
     if (!navigator.geolocation) {
         alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
         return;
     }
 
     btn.classList.add('loading');
-    btn.textContent = '⏳';
+    btn.innerHTML = locateIcon('#BDBDBD');
 
     navigator.geolocation.getCurrentPosition(
         function(position) {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
 
-            // ลบ marker และวงกลมเก่า (ถ้ามี)
-            if (userLocationMarker) {
-                map.removeLayer(userLocationMarker);
-            }
-            if (userLocationCircle) {
-                map.removeLayer(userLocationCircle);
-            }
-            if (userBufferCircle) {
-                map.removeLayer(userBufferCircle);
-            }
+            clearLocation();
 
-            // สร้าง marker ตำแหน่งผู้ใช้
             userLocationMarker = L.marker([lat, lng], {
                 icon: L.divIcon({
                     className: 'user-location-icon',
-                    html: '<div style="background: #006FBF; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(0,111,191,0.5);"></div>',
+                    html: '<div style="background: #1A73E8; width: 16px; height: 16px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(26,115,232,0.5);"></div>',
                     iconSize: [22, 22],
                     iconAnchor: [11, 11]
                 })
             }).addTo(map);
 
-            // สร้างวงกลม Buffer 1 กม. (โปร่งแสง 50%)
-            userBufferCircle = L.circle([lat, lng], {
-                radius: 1000, // 1 กิโลเมตร
-                color: '#006FBF',
-                fillColor: '#006FBF',
-                fillOpacity: 0.1,
-                opacity: 0.5,
-                weight: 2
+            userLocationCircle = L.circle([lat, lng], {
+                radius: accuracy,
+                color: '#1A73E8',
+                fillColor: '#1A73E8',
+                fillOpacity: 0.15,
+                weight: 1,
+                interactive: false
             }).addTo(map);
 
-            // นับจำนวนบ่อน้ำในระยะ 1 กม.
-            let waterSourcesInRange = 0;
-            if (waterData && waterData.features) {
-                waterData.features.forEach(feature => {
-                    if (feature.geometry && feature.geometry.type === "Polygon") {
-                        // หาจุดศูนย์กลางของ polygon
-                        const coords = feature.geometry.coordinates[0];
-                        let sumLat = 0, sumLng = 0;
-                        coords.forEach(coord => {
-                            sumLng += coord[0];
-                            sumLat += coord[1];
-                        });
-                        const centerLat = sumLat / coords.length;
-                        const centerLng = sumLng / coords.length;
-                        
-                        // คำนวณระยะทาง
-                        const distance = map.distance([lat, lng], [centerLat, centerLng]);
-                        if (distance <= 1000) {
-                            waterSourcesInRange++;
-                        }
-                    } else if (feature.geometry && feature.geometry.type === "MultiPolygon") {
-                        // สำหรับ MultiPolygon ใช้ polygon แรก
-                        const coords = feature.geometry.coordinates[0][0];
-                        let sumLat = 0, sumLng = 0;
-                        coords.forEach(coord => {
-                            sumLng += coord[0];
-                            sumLat += coord[1];
-                        });
-                        const centerLat = sumLat / coords.length;
-                        const centerLng = sumLng / coords.length;
-                        
-                        const distance = map.distance([lat, lng], [centerLat, centerLng]);
-                        if (distance <= 1000) {
-                            waterSourcesInRange++;
-                        }
-                    }
-                });
-            }
+            userBufferLayer = L.circle([lat, lng], {
+                radius: 1000,
+                color: '#1A73E8',
+                fillColor: '#1A73E8',
+                fillOpacity: 0.05,
+                weight: 2,
+                dashArray: '6, 5',
+                interactive: false
+            }).addTo(map);
 
-            // Popup แสดงข้อมูลตำแหน่ง
+            const nearbyCount = countFeaturesWithin1km(lat, lng);
+
             userLocationMarker.bindPopup(`
-                <div style="font-family: Prompt, sans-serif; text-align: center;">
-                    <strong style="color: #006FBF; font-size: 15px;">📍 ตำแหน่งของคุณ</strong><br>
-                    <div style="margin-top: 8px; font-size: 13px; color: #666; text-align: left;">
+                <div style="font-family: Prompt, sans-serif; min-width: 200px;">
+                    <div style="background:#006FBF;color:white;padding:8px 12px;margin:-13px -13px 10px;border-radius:8px 8px 0 0;font-size:15px;font-weight:600;">ตำแหน่งของคุณ</div>
+                    <div style="font-size:13px;color:#666;line-height:1.8;">
                         <strong>ละติจูด:</strong> ${lat.toFixed(6)}<br>
-                        <strong>ลองจิจูด:</strong> ${lng.toFixed(6)}<br>
-                        <div style="margin-top: 8px; padding: 8px; background: #E6F2FF; border-radius: 6px; border-left: 3px solid #006FBF;">
-                            <strong style="color: #006FBF;">แหล่งน้ำในระยะ 1 กม.:</strong><br>
-                            <span style="font-size: 20px; font-weight: 700; color: #006FBF;">${waterSourcesInRange.toLocaleString()}</span> แหล่ง
-                        </div>
+                        <strong>ลองจิจูด:</strong> ${lng.toFixed(6)}
+                    </div>
+                    <div style="margin-top:10px;padding:8px 10px;background:#E6F2FF;border-radius:6px;border-left:3px solid #006FBF;">
+                        <div style="font-size:12px;color:#555;">แหล่งน้ำในรัศมี 1 กม.</div>
+                        <div style="font-size:22px;font-weight:700;color:#006FBF;">${nearbyCount} <span style="font-size:13px;font-weight:400;">แห่ง</span></div>
                     </div>
                 </div>
             `).openPopup();
 
-            // ซูมไปยังตำแหน่งผู้ใช้พร้อมแสดง buffer
-            map.fitBounds(userBufferCircle.getBounds(), { padding: [50, 50] });
+            map.setView([lat, lng], 14);
 
             btn.classList.remove('loading');
             btn.classList.add('active');
-            btn.textContent = '📍';
+            btn.innerHTML = locateIcon('#1A73E8');
+            locationActive = true;
         },
         function(error) {
             btn.classList.remove('loading');
-            btn.textContent = '📍';
-            
+            btn.innerHTML = locateIcon('#5F6368');
+
             let errorMsg = 'ไม่สามารถระบุตำแหน่งได้';
-            
             switch(error.code) {
                 case error.PERMISSION_DENIED:
                     errorMsg = 'คุณไม่อนุญาตให้เข้าถึงตำแหน่ง\nกรุณาอนุญาตในการตั้งค่าเบราว์เซอร์';
@@ -953,14 +980,9 @@ document.getElementById('locateBtn').addEventListener('click', function() {
                     errorMsg = 'หมดเวลาในการระบุตำแหน่ง\nกรุณาลองใหม่อีกครั้ง';
                     break;
             }
-            
             alert(errorMsg);
         },
-        {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
 });
 </script>
